@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PetFeeder Mobile</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .pulse-dot {
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans pb-8">
+
+  <!-- Header -->
+  <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50 px-5 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-400 flex items-center justify-center shadow-lg shadow-orange-500/20 text-white">
+        <i data-lucide="paw-print" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg leading-tight">PetFeeder IoT</h1>
+        <div class="flex items-center space-x-1.5 mt-0.5">
+          <span id="statusDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="statusText" class="text-xs text-slate-400 font-medium">Conectando...</span>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center space-x-2">
+      <a href="diagrama3d.html" class="p-2.5 rounded-xl bg-blue-600/20 active:bg-blue-600/30 text-blue-400 hover:text-blue-300 transition flex items-center space-x-1.5 text-xs font-semibold border border-blue-500/40" title="Ver Diagrama 3D">
+        <i data-lucide="box" class="w-4 h-4"></i>
+        <span>3D</span>
+      </a>
+      <button onclick="syncPhoneClock()" class="p-2.5 rounded-xl bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white transition flex items-center space-x-1.5 text-xs font-medium border border-slate-700/60" title="Sincronizar Relógio">
+        <i data-lucide="clock" class="w-4 h-4"></i>
+        <span>Sync</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Container principal -->
+  <main class="flex-1 max-w-md w-full mx-auto px-4 pt-5 space-y-4">
+
+    <!-- Card Principal: Status da Tigela & Bomba -->
+    <div class="bg-gradient-to-br from-slate-900 to-slate-900/90 rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Nível da Tigela</span>
+        <span id="bowlPercentage" class="text-2xl font-black text-sky-400">--%</span>
+      </div>
+
+      <!-- Barra de progresso -->
+      <div class="w-full bg-slate-800 h-4 rounded-full overflow-hidden p-0.5 border border-slate-700/40">
+        <div id="bowlProgressBar" class="h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full transition-all duration-700" style="width: 0%"></div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2.5 pt-2 border-t border-slate-800/80">
+        <div class="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/40 text-center">
+          <span class="text-[11px] text-slate-400 block font-medium">Bomba</span>
+          <span id="pumpBadge" class="text-xs font-bold text-slate-400 mt-1 inline-block">--</span>
+        </div>
+        <div class="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/40 text-center">
+          <span class="text-[11px] text-slate-400 block font-medium">Hora RTC</span>
+          <span id="rtcTime" class="text-xs font-bold text-amber-400 mt-1 inline-block">--:--:--</span>
+        </div>
+        <div class="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/40 text-center">
+          <span class="text-[11px] text-slate-400 block font-medium">Porção</span>
+          <span id="portionVal" class="text-xs font-bold text-emerald-400 mt-1 inline-block">--%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botões de Ação Rápida (Touch amigáveis) -->
+    <div class="grid grid-cols-2 gap-3.5">
+      <!-- Botão Ração -->
+      <button onclick="sendCommand('racao')" class="group relative overflow-hidden bg-gradient-to-br from-amber-500 to-orange-600 rounded-3xl p-5 text-left shadow-lg shadow-orange-600/25 active:scale-[0.97] transition duration-150 flex flex-col justify-between h-36">
+        <div class="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white mb-2 shadow-inner">
+          <i data-lucide="bone" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <span class="text-xs text-orange-100 font-medium block">Comando Imediato</span>
+          <span class="text-lg font-bold text-white leading-tight block">Dar Ração</span>
+        </div>
+      </button>
+
+      <!-- Botão Água -->
+      <button onclick="sendCommand('agua')" id="btnPump" class="group relative overflow-hidden bg-gradient-to-br from-sky-500 to-blue-700 rounded-3xl p-5 text-left shadow-lg shadow-blue-600/25 active:scale-[0.97] transition duration-150 flex flex-col justify-between h-36">
+        <div class="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white mb-2 shadow-inner">
+          <i data-lucide="droplets" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <span class="text-xs text-sky-100 font-medium block">Bomba d'Água</span>
+          <span id="btnPumpLabel" class="text-lg font-bold text-white leading-tight block">Ligar Água</span>
+        </div>
+      </button>
+    </div>
+
+    <!-- Teste Rápido de Polaridade do Relé -->
+    <div class="flex items-center justify-between bg-slate-900/60 border border-slate-800/80 rounded-2xl px-4 py-2.5 text-xs">
+      <span class="text-slate-400 font-medium">Diagnóstico Relé:</span>
+      <div class="flex space-x-2">
+        <button onclick="sendCommand('agua_high')" class="px-2.5 py-1 bg-slate-800 active:bg-blue-600 border border-slate-700 rounded-lg text-slate-300 font-mono">Forçar HIGH</button>
+        <button onclick="sendCommand('agua_low')" class="px-2.5 py-1 bg-slate-800 active:bg-blue-600 border border-slate-700 rounded-lg text-slate-300 font-mono">Forçar LOW</button>
+      </div>
+    </div>
+
+    <!-- Card de Programação / Horários -->
+    <div class="bg-slate-900/90 rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="calendar-clock" class="w-5 h-5 text-amber-400"></i>
+          <h2 class="font-bold text-base">Horários & Porção</h2>
+        </div>
+      </div>
+
+      <div class="space-y-3.5 text-sm">
+        <!-- 1ª Alimentação -->
+        <div class="flex items-center justify-between bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800/60">
+          <div>
+            <span class="text-xs text-slate-400 font-medium block">1ª Alimentação</span>
+            <span class="text-xs text-slate-500">Manhã</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <input type="number" id="inH1" min="0" max="23" onfocus="window.scheduleLoaded = true" class="w-14 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-center font-bold text-white focus:outline-none focus:border-amber-500" value="8">
+            <span class="text-slate-500 font-bold">:</span>
+            <input type="number" id="inM1" min="0" max="59" onfocus="window.scheduleLoaded = true" class="w-14 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-center font-bold text-white focus:outline-none focus:border-amber-500" value="0">
+          </div>
+        </div>
+
+        <!-- 2ª Alimentação -->
+        <div class="flex items-center justify-between bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800/60">
+          <div>
+            <span class="text-xs text-slate-400 font-medium block">2ª Alimentação</span>
+            <span class="text-xs text-slate-500">Tarde/Noite</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <input type="number" id="inH2" min="0" max="23" onfocus="window.scheduleLoaded = true" class="w-14 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-center font-bold text-white focus:outline-none focus:border-amber-500" value="18">
+            <span class="text-slate-500 font-bold">:</span>
+            <input type="number" id="inM2" min="0" max="59" onfocus="window.scheduleLoaded = true" class="w-14 bg-slate-900 border border-slate-700 rounded-xl px-2 py-1.5 text-center font-bold text-white focus:outline-none focus:border-amber-500" value="0">
+          </div>
+        </div>
+
+        <!-- Slider Porção -->
+        <div class="bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800/60 space-y-2">
+          <div class="flex justify-between items-center">
+            <span class="text-xs text-slate-400 font-medium">Tamanho da Porção</span>
+            <span id="sliderLabel" class="text-xs font-bold text-emerald-400">5%</span>
+          </div>
+          <input type="range" id="inPorcao" min="0" max="100" value="5" oninput="window.scheduleLoaded = true; document.getElementById('sliderLabel').innerText = this.value + '%'" class="w-full accent-emerald-500 bg-slate-800 h-2 rounded-lg cursor-pointer">
+        </div>
+
+        <!-- Botão Salvar -->
+        <button onclick="saveSchedule()" class="w-full py-3.5 bg-slate-800 active:bg-slate-700 border border-slate-700/80 rounded-2xl font-bold text-white flex items-center justify-center space-x-2 transition shadow-md">
+          <i data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
+          <span>Salvar Programação</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Informação de Broker -->
+    <div class="text-center text-xs text-slate-500 pt-1">
+      Broker: <span class="font-mono text-slate-400">broker.emqx.io</span> (WebSockets)
+    </div>
+
+  </main>
+
+  <!-- Toast de Notificação -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 text-white px-5 py-3 rounded-2xl shadow-2xl transition-all duration-300 opacity-0 pointer-events-none flex items-center space-x-2.5 z-50 text-sm font-medium">
+    <i id="toastIcon" data-lucide="info" class="w-4 h-4 text-sky-400"></i>
+    <span id="toastMsg">Mensagem</span>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    const MQTT_BROKER_WS = "wss://broker.emqx.io:8084/mqtt"; // WSS seguro compatível com mobile
+    const TOPIC_STATUS   = "petfeeder/status";
+    const TOPIC_COMMAND  = "petfeeder/comando";
+    const TOPIC_CONFIG   = "petfeeder/config";
+    const TOPIC_RTC      = "petfeeder/relogio";
+
+    let pumpState = false;
+
+    // Conectar MQTT via WebSockets
+    const client = mqtt.connect(MQTT_BROKER_WS, {
+      clientId: "PetFeeder_Mobile_" + Math.random().toString(16).substring(2, 8),
+      clean: true,
+      reconnectPeriod: 3000
+    });
+
+    const statusDot  = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+
+    client.on("connect", () => {
+      statusDot.className = "w-2 h-2 rounded-full bg-emerald-500 pulse-dot";
+      statusText.innerText = "Conectado ao Broker";
+      statusText.className = "text-xs text-emerald-400 font-medium";
+      client.subscribe(TOPIC_STATUS);
+      showToast("Conectado ao alimentador!", "check-circle");
+    });
+
+    client.on("error", (err) => {
+      statusDot.className = "w-2 h-2 rounded-full bg-rose-500";
+      statusText.innerText = "Erro na conexão";
+      statusText.className = "text-xs text-rose-400 font-medium";
+    });
+
+    client.on("offline", () => {
+      statusDot.className = "w-2 h-2 rounded-full bg-amber-500";
+      statusText.innerText = "Reconectando...";
+      statusText.className = "text-xs text-amber-400 font-medium";
+    });
+
+    // Mensagens recebidas do ESP32
+    client.on("message", (topic, message) => {
+      if (topic === TOPIC_STATUS) {
+        try {
+          const data = JSON.parse(message.toString());
+          updateUI(data);
+        } catch (e) {
+          console.error("Erro JSON:", e);
+        }
+      }
+    });
+
+    function updateUI(data) {
+      // Tigela
+      if (data.tigela !== undefined) {
+        const bowl = Math.max(0, Math.min(100, Math.round(data.tigela)));
+        document.getElementById("bowlPercentage").innerText = bowl + "%";
+        document.getElementById("bowlProgressBar").style.width = bowl + "%";
+      }
+
+      // Bomba
+      if (data.agua !== undefined) {
+        pumpState = data.agua;
+        const badge = document.getElementById("pumpBadge");
+        const btnLabel = document.getElementById("btnPumpLabel");
+        if (data.agua) {
+          badge.innerText = "LIGADA";
+          badge.className = "text-xs font-bold text-sky-400 mt-1 inline-block";
+          btnLabel.innerText = "Desligar Água";
+        } else {
+          badge.innerText = "DESLIGADA";
+          badge.className = "text-xs font-bold text-slate-400 mt-1 inline-block";
+          btnLabel.innerText = "Ligar Água";
+        }
+      }
+
+      // Hora RTC
+      if (data.hora) {
+        document.getElementById("rtcTime").innerText = data.hora;
+      }
+
+      // Porção
+      if (data.porcao !== undefined) {
+        document.getElementById("portionVal").innerText = data.porcao + "%";
+      }
+
+      // Preencher horários APENAS UMA VEZ na primeira carga, para nunca sobrescrever enquanto o usuário digita
+      if (data.h1 !== undefined && !window.scheduleLoaded) {
+        document.getElementById("inH1").value = data.h1;
+        document.getElementById("inM1").value = data.m1;
+        document.getElementById("inH2").value = data.h2;
+        document.getElementById("inM2").value = data.m2;
+        document.getElementById("inPorcao").value = data.porcao;
+        document.getElementById("sliderLabel").innerText = data.porcao + "%";
+        window.scheduleLoaded = true;
+      }
+    }
+
+    // Enviar comandos simples
+    function sendCommand(cmd) {
+      if (navigator.vibrate) navigator.vibrate(40);
+      client.publish(TOPIC_COMMAND, cmd);
+      if (cmd === 'racao') {
+        showToast("Comando enviado: Dispensando ração!", "bone");
+      } else if (cmd === 'agua') {
+        showToast("Comando alternado: Bomba d'água!", "droplets");
+      }
+    }
+
+    // Salvar configuração
+    function saveSchedule() {
+      window.userInteractedWithSchedule = true;
+      if (navigator.vibrate) navigator.vibrate(50);
+      const payload = {
+        h1: parseInt(document.getElementById("inH1").value),
+        m1: parseInt(document.getElementById("inM1").value),
+        h2: parseInt(document.getElementById("inH2").value),
+        m2: parseInt(document.getElementById("inM2").value),
+        porcao: parseInt(document.getElementById("inPorcao").value)
+      };
+      client.publish(TOPIC_CONFIG, JSON.stringify(payload));
+      showToast("Agenda salva com sucesso!", "check");
+    }
+
+    // Sincronizar RTC com o celular
+    function syncPhoneClock() {
+      if (navigator.vibrate) navigator.vibrate(30);
+      const now = new Date();
+      const payload = {
+        ano: now.getFullYear(),
+        mes: now.getMonth() + 1,
+        dia: now.getDate(),
+        hora: now.getHours(),
+        min: now.getMinutes(),
+        seg: now.getSeconds()
+      };
+      client.publish(TOPIC_RTC, JSON.stringify(payload));
+      showToast("Relógio sincronizado com o celular!", "clock");
+    }
+
+    function showToast(msg, icon) {
+      const toast = document.getElementById("toast");
+      const toastMsg = document.getElementById("toastMsg");
+      toastMsg.innerText = msg;
+      toast.classList.remove("opacity-0", "pointer-events-none");
+      toast.classList.add("opacity-100");
+      setTimeout(() => {
+        toast.classList.remove("opacity-100");
+        toast.classList.add("opacity-0", "pointer-events-none");
+      }, 2500);
+    }
+  </script>
+</body>
+</html>

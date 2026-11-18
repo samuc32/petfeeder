@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagrama 3D - PetFeeder IoT ESP32-S3</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #090d16;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+    #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+    
+    /* UI Overlay */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 20px;
+    }
+    .interactive { pointer-events: auto; }
+
+    /* Header */
+    .header {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 14px 20px;
+      border-radius: 18px;
+      max-width: 480px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    }
+    .header h1 { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+    .header p { font-size: 12px; color: #94a3b8; margin-top: 4px; line-height: 1.4; }
+    .badge {
+      display: inline-block;
+      background: #3b82f6;
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+
+    /* Component Details Panel */
+    .info-card {
+      position: absolute;
+      bottom: 24px;
+      left: 20px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 20px;
+      padding: 18px;
+      width: 320px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .info-card h3 { font-size: 15px; font-weight: 700; color: #60a5fa; margin-bottom: 6px; }
+    .info-card p { font-size: 12px; color: #cbd5e1; line-height: 1.5; margin-bottom: 10px; }
+    .pin-tag {
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #93c5fd;
+      font-family: monospace;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-block;
+    }
+
+    /* Control Bar */
+    .controls {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .btn {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #3b82f6; border-color: #60a5fa; transform: translateY(-1px); }
+    .btn.active { background: #2563eb; border-color: #93c5fd; }
+
+    /* Legend / Quick Selector */
+    .legend {
+      position: absolute;
+      bottom: 24px;
+      right: 20px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 11px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    .legend-item:hover { background: rgba(255,255,255,0.08); }
+    .color-box { width: 10px; height: 10px; border-radius: 3px; }
+
+    .hint {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: #64748b;
+      letter-spacing: 0.5px;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <div class="overlay">
+    <!-- Header -->
+    <div class="header interactive">
+      <h1>
+        <span>🐾 PetFeeder IoT</span>
+        <span class="badge">ESP32-S3</span>
+      </h1>
+      <p>Diagrama Arquitetural 3D Interativo. Clique e arraste para rotacionar. Use a roda do mouse para zoom. Clique nos componentes para inspecionar.</p>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls interactive">
+      <button class="btn" id="btn-explode" onclick="toggleExplode()">
+        <span>💥</span> <span id="explode-text">Vista Explodida</span>
+      </button>
+      <button class="btn" id="btn-rotate" onclick="toggleAutoRotate()">
+        <span>🔄</span> <span>Auto Rotação</span>
+      </button>
+      <button class="btn" onclick="animateFeeding()">
+        <span>🍖</span> <span>Dispensar Ração</span>
+      </button>
+      <button class="btn" onclick="animateWater()">
+        <span>💧</span> <span>Bomba d'Água</span>
+      </button>
+      <button class="btn" onclick="resetCamera()">
+        <span>🎯</span> <span>Reset Câmera</span>
+      </button>
+    </div>
+
+    <!-- Component Info Card -->
+    <div class="info-card interactive" id="info-card">
+      <h3 id="comp-title">ESP32-S3 Dev Module</h3>
+      <p id="comp-desc">Controlador principal com Wi-Fi 2.4GHz e BLE. Orquestra MQTT, agenda em NVS, controle de sensores e atuadores.</p>
+      <div id="comp-pins" class="pin-tag">CPU Dual-Core 240MHz</div>
+    </div>
+
+    <!-- Component Selector -->
+    <div class="legend interactive">
+      <div style="font-weight:700; color:#94a3b8; font-size:10px; text-transform:uppercase; margin-bottom:4px;">Componentes</div>
+      <div class="legend-item" onclick="focusComponent('esp32')"><div class="color-box" style="background:#10b981;"></div>ESP32-S3 (Cérebro)</div>
+      <div class="legend-item" onclick="focusComponent('servo')"><div class="color-box" style="background:#3b82f6;"></div>Servo Ração (GPIO 13)</div>
+      <div class="legend-item" onclick="focusComponent('rele')"><div class="color-box" style="background:#0284c7;"></div>Módulo Relé (GPIO 12)</div>
+      <div class="legend-item" onclick="focusComponent('bomba')"><div class="color-box" style="background:#06b6d4;"></div>Bomba Submersível 5V</div>
+      <div class="legend-item" onclick="focusComponent('lcd')"><div class="color-box" style="background:#38bdf8;"></div>Display LCD I2C (GPIO 4/5)</div>
+      <div class="legend-item" onclick="focusComponent('rtc')"><div class="color-box" style="background:#eab308;"></div>RTC DS3231 (GPIO 6/7)</div>
+      <div class="legend-item" onclick="focusComponent('ultra_food')"><div class="color-box" style="background:#f97316;"></div>Ultrassônico 1 - Ração</div>
+      <div class="legend-item" onclick="focusComponent('ultra_water')"><div class="color-box" style="background:#f43f5e;"></div>Ultrassônico 2 - Reserva</div>
+      <div class="legend-item" onclick="focusComponent('ultra_bowl')"><div class="color-box" style="background:#a855f7;"></div>Ultrassônico 3 - Tigela</div>
+    </div>
+
+    <div class="hint">Botão Esquerdo: Rotacionar • Botão Direito: Mover • Scroll: Zoom</div>
+  </div>
+
+  <script>
+    // --- Setup Three.js Scene ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090d16);
+    scene.fog = new THREE.FogExp2(0x090d16, 0.015);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(28, 22, 32);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 + 0.05; // don't go below floor
+    controls.target.set(0, 4, 0);
+
+    // --- Iluminação ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(20, 40, 20);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    const blueLight = new THREE.PointLight(0x38bdf8, 2, 40);
+    blueLight.position.set(-10, 15, 10);
+    scene.add(blueLight);
+
+    const amberLight = new THREE.PointLight(0xf59e0b, 1.5, 30);
+    amberLight.position.set(10, 8, -10);
+    scene.add(amberLight);
+
+    // --- Grid Piso ---
+    const grid = new THREE.GridHelper(60, 60, 0x1e293b, 0x0f172a);
+    grid.position.y = -0.01;
+    scene.add(grid);
+
+    // --- Materiais Reutilizáveis ---
+    const mats = {
+      acrylic: new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.28, roughness: 0.1, transmission: 0.85, thickness: 1.2 }),
+      whitePlastic: new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35, metalness: 0.05 }),
+      pcbGreen: new THREE.MeshStandardMaterial({ color: 0x065f46, roughness: 0.4, metalness: 0.2 }),
+      pcbBlack: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.1 }),
+      pcbBlue: new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4, metalness: 0.1 }),
+      metalSilver: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2, metalness: 0.85 }),
+      metalCopper: new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.8 }),
+      water: new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.65, roughness: 0.1 }),
+      foodKibble: new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 }),
+      lcdBlue: new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, emissiveIntensity: 0.6 }),
+      rubberBlack: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 }),
+      wireRed: new THREE.MeshBasicMaterial({ color: 0xef4444 }),
+      wireBlack: new THREE.MeshBasicMaterial({ color: 0x1e293b }),
+      wireYellow: new THREE.MeshBasicMaterial({ color: 0xeab308 }),
+      wireBlue: new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
+    };
+
+    // --- Grupos de Objetos ---
+    const parts = {};
+    const rootGroup = new THREE.Group();
+    scene.add(rootGroup);
+
+    // 1. BASE & ESTRUTURA
+    const feederBase = new THREE.Group();
+    const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(22, 1.2, 22), mats.whitePlastic);
+    baseMesh.position.y = 0.6;
+    baseMesh.castShadow = true;
+    baseMesh.receiveShadow = true;
+    feederBase.add(baseMesh);
+
+    // Tigelas dianteiras (Ração e Água)
+    const bowlGeo = new THREE.CylinderGeometry(3.6, 2.6, 1.8, 32);
+    const bowlFoodMesh = new THREE.Mesh(bowlGeo, mats.metalSilver);
+    bowlFoodMesh.position.set(-4.5, 1.2, 7.5);
+    bowlFoodMesh.castShadow = true;
+    feederBase.add(bowlFoodMesh);
+
+    const bowlWaterMesh = new THREE.Mesh(bowlGeo, mats.metalSilver);
+    bowlWaterMesh.position.set(4.5, 1.2, 7.5);
+    bowlWaterMesh.castShadow = true;
+    feederBase.add(bowlWaterMesh);
+
+    // Água dentro da tigela
+    const bowlWaterFill = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.2, 1.2, 32), mats.water);
+    bowlWaterFill.position.set(4.5, 1.4, 7.5);
+    feederBase.add(bowlWaterFill);
+    parts.bowlWaterFill = bowlWaterFill;
+
+    // Ração dentro da tigela
+    const kibbleGroup = new THREE.Group();
+    for(let i=0; i<15; i++) {
+      const k = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35), mats.foodKibble);
+      k.position.set(-4.5 + (Math.random()-0.5)*3, 1.4 + Math.random()*0.4, 7.5 + (Math.random()-0.5)*3);
+      kibbleGroup.add(k);
+    }
+    feederBase.add(kibbleGroup);
+    parts.kibbleGroup = kibbleGroup;
+
+    rootGroup.add(feederBase);
+    parts.base = feederBase;
+
+    // 2. CORPO PRINCIPAL (Reservatórios)
+    const bodyGroup = new THREE.Group();
+    // Silo de Ração (Cilindro acrílico)
+    const siloFood = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 14, 32), mats.acrylic);
+    siloFood.position.set(-4.5, 8.5, -2);
+    siloFood.castShadow = true;
+    bodyGroup.add(siloFood);
+
+    // Ração dentro do Silo
+    const siloFoodContent = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 4.0, 11, 32), mats.foodKibble);
+    siloFoodContent.position.set(-4.5, 7.0, -2);
+    bodyGroup.add(siloFoodContent);
+
+    // Silo de Água (Reservatório acrílico)
+    const siloWater = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 14, 32), mats.acrylic);
+    siloWater.position.set(4.5, 8.5, -2);
+    siloWater.castShadow = true;
+    bodyGroup.add(siloWater);
+
+    // Água dentro do Silo
+    const siloWaterContent = new THREE.Mesh(new THREE.CylinderGeometry(4.0, 4.0, 11, 32), mats.water);
+    siloWaterContent.position.set(4.5, 7.0, -2);
+    bodyGroup.add(siloWaterContent);
+
+    // Tampa Superior
+    const topLid = new THREE.Mesh(new THREE.BoxGeometry(19, 1.2, 11), mats.whitePlastic);
+    topLid.position.set(0, 16.0, -2);
+    topLid.castShadow = true;
+    bodyGroup.add(topLid);
+
+    rootGroup.add(bodyGroup);
+    parts.body = bodyGroup;
+
+    // 3. ELETRÔNICA (Painel Traseiro / Base)
+    // ESP32-S3 Board
+    const espGroup = new THREE.Group();
+    const espPcb = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.3, 3.0), mats.pcbBlack);
+    const espChip = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.4, 2.0), mats.metalSilver);
+    espChip.position.set(0.5, 0.2, 0);
+    const espAntenna = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.35, 2.6), mats.metalCopper);
+    espAntenna.position.set(-1.6, 0.1, 0);
+    espGroup.add(espPcb, espChip, espAntenna);
+    espGroup.position.set(0, 2.0, 0);
+    rootGroup.add(espGroup);
+    parts.esp32 = espGroup;
+
+    // Display LCD 16x2 I2C (Frontal)
+    const lcdGroup = new THREE.Group();
+    const lcdPcb = new THREE.Mesh(new THREE.BoxGeometry(7.0, 3.0, 0.4), mats.pcbBlue);
+    const lcdScreen = new THREE.Mesh(new THREE.BoxGeometry(5.8, 1.8, 0.3), mats.lcdBlue);
+    lcdScreen.position.z = 0.25;
+    lcdGroup.add(lcdPcb, lcdScreen);
+    lcdGroup.position.set(0, 8.5, 3.8);
+    lcdGroup.rotation.x = -0.15;
+    rootGroup.add(lcdGroup);
+    parts.lcd = lcdGroup;
+
+    // RTC DS3231 Module
+    const rtcGroup = new THREE.Group();
+    const rtcPcb = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.3, 3.5), mats.pcbBlue);
+    const rtcBattery = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.4, 24), mats.metalSilver);
+    rtcBattery.position.set(0, 0.3, 0.5);
+    rtcGroup.add(rtcPcb, rtcBattery);
+    rtcGroup.position.set(-6.5, 2.0, 0);
+    rootGroup.add(rtcGroup);
+    parts.rtc = rtcGroup;
+
+    // Módulo Relé 5V
+    const releGroup = new THREE.Group();
+    const relePcb = new THREE.Mesh(new THREE.BoxGeometry(3.5, 0.3, 3.5), mats.pcbBlue);
+    const releCube = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.6, 1.8), new THREE.MeshStandardMaterial({color: 0x0284c7}));
+    releCube.position.set(0, 0.9, 0);
+    releGroup.add(relePcb, releCube);
+    releGroup.position.set(6.5, 2.0, 0);
+    rootGroup.add(releGroup);
+    parts.rele = releGroup;
+
+    // Servo Motor (Alimentador de Ração)
+    const servoGroup = new THREE.Group();
+    const servoBody = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.8, 2.6), new THREE.MeshStandardMaterial({color: 0x1d4ed8}));
+    const servoHorn = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 2.2), mats.whitePlastic);
+    servoHorn.position.set(0.9, 1.1, 0);
+    servoGroup.add(servoBody, servoHorn);
+    servoGroup.position.set(-4.5, 2.5, -2);
+    rootGroup.add(servoGroup);
+    parts.servo = servoGroup;
+    parts.servoHorn = servoHorn;
+
+    // Bomba Submersível de Água
+    const bombaGroup = new THREE.Group();
+    const bombaBody = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.6, 24), mats.rubberBlack);
+    const bombaNozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1.2, 16), mats.whitePlastic);
+    bombaNozzle.rotation.z = Math.PI/2;
+    bombaNozzle.position.set(1.0, 0.6, 0);
+    bombaGroup.add(bombaBody, bombaNozzle);
+    bombaGroup.position.set(4.5, 2.5, -2);
+    rootGroup.add(bombaGroup);
+    parts.bomba = bombaGroup;
+
+    // 4. SENSORES ULTRASSÔNICOS HC-SR04
+    function createUltrasonic(color) {
+      const g = new THREE.Group();
+      const pcb = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.8, 0.3), mats.pcbBlue);
+      const eyeGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.9, 20);
+      eyeGeo.rotateX(Math.PI/2);
+      const eye1 = new THREE.Mesh(eyeGeo, mats.metalSilver);
+      eye1.position.set(-1.1, 0, 0.5);
+      const eye2 = new THREE.Mesh(eyeGeo, mats.metalSilver);
+      eye2.position.set(1.1, 0, 0.5);
+      g.add(pcb, eye1, eye2);
+      return g;
+    }
+
+    // Sensor 1: Nível de Ração (Tampa Superior do Silo 1)
+    const ultraFood = createUltrasonic();
+    ultraFood.rotation.x = Math.PI / 2;
+    ultraFood.position.set(-4.5, 15.2, -2);
+    rootGroup.add(ultraFood);
+    parts.ultra_food = ultraFood;
+
+    // Sensor 2: Reserva de Água (Tampa Superior do Silo 2)
+    const ultraWater = createUltrasonic();
+    ultraWater.rotation.x = Math.PI / 2;
+    ultraWater.position.set(4.5, 15.2, -2);
+    rootGroup.add(ultraWater);
+    parts.ultra_water = ultraWater;
+
+    // Sensor 3: Nível da Tigela (Frontal Apontando para Tigela)
+    const ultraBowl = createUltrasonic();
+    ultraBowl.rotation.x = Math.PI / 3;
+    ultraBowl.position.set(0, 5.0, 4.5);
+    rootGroup.add(ultraBowl);
+    parts.ultra_bowl = ultraBowl;
+
+    // 5. CABOS / CONEXÕES (Tubos 3D Curvos)
+    function createWire(start, end, mat) {
+      const mid = new THREE.Vector3((start.x+end.x)/2, Math.max(start.y, end.y)+1.5, (start.z+end.z)/2);
+      const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+      const tubeGeo = new THREE.TubeGeometry(curve, 20, 0.08, 8, false);
+      const tube = new THREE.Mesh(tubeGeo, mat);
+      rootGroup.add(tube);
+      return tube;
+    }
+
+    // Cabos do ESP32 para periféricos
+    createWire(new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(-4.5, 2.5, -2), mats.wireYellow); // Servo (GPIO 13)
+    createWire(new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(6.5, 2.2, 0), mats.wireBlue);     // Relé (GPIO 12)
+    createWire(new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(-6.5, 2.2, 0), mats.wireRed);     // RTC I2C (GPIO 6/7)
+    createWire(new THREE.Vector3(0, 2.2, 0), new THREE.Vector3(0, 8.5, 3.8), mats.wireRed);      // LCD I2C (GPIO 4/5)
+
+    // --- Component Info Details Dictionary ---
+    const componentDetails = {
+      esp32: {
+        title: "ESP32-S3 Dev Module",
+        desc: "Microcontrolador dual-core Xtensa LX7 com Wi-Fi 2.4GHz nativo. Executa o FreeRTOS, mantém a conexão MQTT sem bloqueios e armazena os agendamentos na memória flash (Preferences NVS).",
+        pins: "Coração do Sistema • 3.3V Logic"
+      },
+      servo: {
+        title: "Servo Motor SG90 (Porta de Ração)",
+        desc: "Controla a abertura mecânica da comporta inferior do silo de ração. O ângulo de abertura (0 a 90 graus) é calibrado linearmente conforme a porcentagem da porção configurada.",
+        pins: "Sinal PWM: GPIO 13 • 5V • GND"
+      },
+      rele: {
+        title: "Módulo Relé 5V Optoisolado",
+        desc: "Comuta a alimentação de alta corrente da mini bomba de água sem ruídos eletromagnéticos para o ESP32. Suporta desligamento de segurança automático de 10s e acionamento manual.",
+        pins: "Controle: GPIO 12 • 5V • GND"
+      },
+      bomba: {
+        title: "Mini Bomba Submersível 5V DC",
+        desc: "Bomba silenciosa de baixo consumo instalada na base do reservatório de água. Bombeia a água limpa através de duto para a tigela frontal quando o nível estiver baixo.",
+        pins: "Alimentação via Relé (GPIO 12)"
+      },
+      lcd: {
+        title: "Display LCD 16x2 com Módulo I2C",
+        desc: "Interface visual física. Exibe hora atual sincronizada, status da bomba e próximo horário programado com porção. Usa barramento I2C0 dedicado para evitar interferências.",
+        pins: "SDA: GPIO 4 • SCL: GPIO 5 (I2C0 @ 0x27)"
+      },
+      rtc: {
+        title: "Módulo RTC DS3231 de Alta Precisão",
+        desc: "Relógio de tempo real com oscilador compensado por temperatura (TCXO) e bateria CR2032. Garante que os pets sejam alimentados no horário exato mesmo se a internet cair.",
+        pins: "SDA: GPIO 6 • SCL: GPIO 7 (I2C1)"
+      },
+      ultra_food: {
+        title: "Sensor Ultrassônico 1 (Silo de Ração)",
+        desc: "Mede por tempo de voo de onda sonora a distância até a superfície da ração seca no reservatório principal, calculando a porcentagem de nível restante.",
+        pins: "TRIG: GPIO 10 • ECHO: GPIO 11"
+      },
+      ultra_water: {
+        title: "Sensor Ultrassônico 2 (Reserva de Água)",
+        desc: "Monitora o volume de água restante no galão interno. Impede que a bomba ligue caso a água esteja abaixo de 5%, evitando queima por funcionamento a seco.",
+        pins: "TRIG: GPIO 15 • ECHO: GPIO 16"
+      },
+      ultra_bowl: {
+        title: "Sensor Ultrassônico 3 (Nível da Tigela)",
+        desc: "Aponta diretamente para a tigela onde o pet bebe. Quando a tigela fica abaixo de 20%, o ESP32-S3 liga automaticamente a bomba para reabastecer até o nível ideal.",
+        pins: "TRIG: GPIO 17 • ECHO: GPIO 18"
+      }
+    };
+
+    function focusComponent(key) {
+      const data = componentDetails[key];
+      if (!data) return;
+      document.getElementById('comp-title').innerText = data.title;
+      document.getElementById('comp-desc').innerText = data.desc;
+      document.getElementById('comp-pins').innerText = data.pins;
+
+      const targetPart = parts[key];
+      if (targetPart) {
+        const box = new THREE.Box3().setFromObject(targetPart);
+        const center = box.getCenter(new THREE.Vector3());
+        
+        new TWEEN.Tween(controls.target)
+          .to({ x: center.x, y: center.y, z: center.z }, 800)
+          .easing(TWEEN.Easing.Cubic.Out)
+          .start();
+
+        new TWEEN.Tween(camera.position)
+          .to({ x: center.x + 12, y: center.y + 8, z: center.z + 14 }, 800)
+          .easing(TWEEN.Easing.Cubic.Out)
+          .start();
+      }
+    }
+
+    // --- Exploded View Toggle ---
+    let exploded = false;
+    function toggleExplode() {
+      exploded = !exploded;
+      document.getElementById('explode-text').innerText = exploded ? "Montar Modelo" : "Vista Explodida";
+      document.getElementById('btn-explode').classList.toggle('active', exploded);
+
+      const mult = exploded ? 1.9 : 1.0;
+      
+      new TWEEN.Tween(parts.body.position).to({ y: exploded ? 8 : 0 }, 1000).easing(TWEEN.Easing.Back.Out).start();
+      new TWEEN.Tween(parts.lcd.position).to({ z: exploded ? 8.5 : 3.8, y: exploded ? 12 : 8.5 }, 1000).easing(TWEEN.Easing.Back.Out).start();
+      new TWEEN.Tween(parts.rele.position).to({ x: exploded ? 12 : 6.5 }, 1000).easing(TWEEN.Easing.Back.Out).start();
+      new TWEEN.Tween(parts.rtc.position).to({ x: exploded ? -12 : -6.5 }, 1000).easing(TWEEN.Easing.Back.Out).start();
+      new TWEEN.Tween(parts.ultra_food.position).to({ y: exploded ? 22 : 15.2 }, 1000).easing(TWEEN.Easing.Back.Out).start();
+      new TWEEN.Tween(parts.ultra_water.position).to({ y: exploded ? 22 : 15.2 }, 1000).easing(TWEEN.Easing.Back.Out).start();
+      new TWEEN.Tween(parts.ultra_bowl.position).to({ z: exploded ? 8 : 4.5, y: exploded ? 8 : 5.0 }, 1000).easing(TWEEN.Easing.Back.Out).start();
+    }
+
+    // --- Auto Rotate ---
+    let autoRotate = false;
+    function toggleAutoRotate() {
+      autoRotate = !autoRotate;
+      controls.autoRotate = autoRotate;
+      controls.autoRotateSpeed = 2.0;
+      document.getElementById('btn-rotate').classList.toggle('active', autoRotate);
+    }
+
+    // --- Reset Camera ---
+    function resetCamera() {
+      new TWEEN.Tween(camera.position).to({ x: 28, y: 22, z: 32 }, 800).easing(TWEEN.Easing.Cubic.Out).start();
+      new TWEEN.Tween(controls.target).to({ x: 0, y: 4, z: 0 }, 800).easing(TWEEN.Easing.Cubic.Out).start();
+    }
+
+    // --- Animações Interativas de Ração e Água ---
+    function animateFeeding() {
+      // Abre e fecha o servo
+      new TWEEN.Tween(parts.servoHorn.rotation)
+        .to({ y: Math.PI / 2 }, 400)
+        .easing(TWEEN.Easing.Bounce.Out)
+        .chain(
+          new TWEEN.Tween(parts.servoHorn.rotation)
+            .to({ y: 0 }, 500)
+            .delay(1200)
+            .easing(TWEEN.Easing.Cubic.InOut)
+        )
+        .start();
+
+      // Queda de grãos de ração
+      for(let i=0; i<8; i++) {
+        setTimeout(() => {
+          const kib = new THREE.Mesh(new THREE.DodecahedronGeometry(0.35), mats.foodKibble);
+          kib.position.set(-4.5 + (Math.random()-0.5), 6, -2);
+          scene.add(kib);
+
+          new TWEEN.Tween(kib.position)
+            .to({ x: -4.5 + (Math.random()-0.5)*2, y: 1.5, z: 7.5 + (Math.random()-0.5)*2 }, 900)
+            .easing(TWEEN.Easing.Cubic.In)
+            .onComplete(() => {
+              parts.kibbleGroup.add(kib);
+              kib.position.set(-4.5 + (Math.random()-0.5)*3, 1.4 + Math.random()*0.5, 7.5 + (Math.random()-0.5)*3);
+            })
+            .start();
+        }, i * 150);
+      }
+    }
+
+    function animateWater() {
+      // Sobe o nível de água da tigela
+      parts.bowlWaterFill.scale.set(1, 0.2, 1);
+      new TWEEN.Tween(parts.bowlWaterFill.scale)
+        .to({ x: 1, y: 1.2, z: 1 }, 1800)
+        .easing(TWEEN.Easing.Cubic.Out)
+        .start();
+
+      // Pulsação de luz azul no relé
+      const oldColor = parts.rele.children[1].material.color.getHex();
+      parts.rele.children[1].material.color.setHex(0x38bdf8);
+      setTimeout(() => {
+        parts.rele.children[1].material.color.setHex(oldColor);
+      }, 1500);
+    }
+
+    // --- Raycasting para Seleção por Clique ---
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    window.addEventListener('click', (e) => {
+      // Ignora cliques nos menus
+      if (e.target.closest('.interactive')) return;
+
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(rootGroup.children, true);
+      if (intersects.length > 0) {
+        let obj = intersects[0].object;
+        while (obj.parent && obj.parent !== rootGroup) {
+          obj = obj.parent;
+        }
+        for (const [key, partObj] of Object.entries(parts)) {
+          if (partObj === obj) {
+            focusComponent(key);
+            break;
+          }
+        }
+      }
+    });
+
+    // --- Resize ---
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- Loop de Renderização ---
+    function animate(time) {
+      requestAnimationFrame(animate);
+      TWEEN.update();
+      controls.update();
+
+      // Ondulação suave na água
+      if (parts.bowlWaterFill) {
+        parts.bowlWaterFill.rotation.y = time * 0.0008;
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate(0);
+  </script>
+</body>
+</html>
