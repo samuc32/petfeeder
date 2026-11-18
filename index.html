@@ -58,30 +58,71 @@
   <!-- Container principal -->
   <main class="flex-1 max-w-md w-full mx-auto px-4 pt-5 space-y-4">
 
-    <!-- Card Principal: Status da Tigela & Bomba -->
+    <!-- Painel de Nível dos 3 Sensores Ultrassônicos -->
     <div class="bg-gradient-to-br from-slate-900 to-slate-900/90 rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
-      <div class="flex items-center justify-between">
-        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Nível da Tigela</span>
-        <span id="bowlPercentage" class="text-2xl font-black text-sky-400">--%</span>
+      <div class="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <i data-lucide="gauge" class="w-4 h-4 text-sky-400"></i>
+          <span>Sensores de Nível em Tempo Real</span>
+        </h2>
+        <span class="text-[10px] text-slate-500 font-mono">HC-SR04</span>
       </div>
 
-      <!-- Barra de progresso -->
-      <div class="w-full bg-slate-800 h-4 rounded-full overflow-hidden p-0.5 border border-slate-700/40">
-        <div id="bowlProgressBar" class="h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full transition-all duration-700" style="width: 0%"></div>
+      <!-- Sensor 1: Nível de Água do Reservatório -->
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-medium text-sky-300 flex items-center gap-1.5">
+            <i data-lucide="droplet" class="w-3.5 h-3.5 text-sky-400"></i>
+            <span>1. Reservatório de Água</span>
+          </span>
+          <span id="resWaterPct" class="font-bold text-sky-400">--%</span>
+        </div>
+        <div class="w-full bg-slate-800/90 h-3 rounded-full overflow-hidden p-0.5 border border-slate-700/40">
+          <div id="resWaterBar" class="h-full bg-gradient-to-r from-blue-500 to-sky-400 rounded-full transition-all duration-700" style="width: 0%"></div>
+        </div>
       </div>
 
+      <!-- Sensor 2: Nível de Ração do Reservatório -->
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-medium text-amber-300 flex items-center gap-1.5">
+            <i data-lucide="package" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>2. Reservatório de Ração</span>
+          </span>
+          <span id="resFoodPct" class="font-bold text-amber-400">--%</span>
+        </div>
+        <div class="w-full bg-slate-800/90 h-3 rounded-full overflow-hidden p-0.5 border border-slate-700/40">
+          <div id="resFoodBar" class="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-700" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Sensor 3: Nível da Tigela de Água -->
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-medium text-emerald-300 flex items-center gap-1.5">
+            <i data-lucide="cup-soda" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>3. Tigela de Água (Pet)</span>
+          </span>
+          <span id="bowlWaterPct" class="font-bold text-emerald-400">--%</span>
+        </div>
+        <div class="w-full bg-slate-800/90 h-3 rounded-full overflow-hidden p-0.5 border border-slate-700/40">
+          <div id="bowlWaterBar" class="h-full bg-gradient-to-r from-teal-500 to-emerald-400 rounded-full transition-all duration-700" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Mini Badges de Status -->
       <div class="grid grid-cols-3 gap-2.5 pt-2 border-t border-slate-800/80">
-        <div class="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/40 text-center">
-          <span class="text-[11px] text-slate-400 block font-medium">Bomba</span>
-          <span id="pumpBadge" class="text-xs font-bold text-slate-400 mt-1 inline-block">--</span>
+        <div class="bg-slate-950/60 rounded-2xl p-2.5 border border-slate-800/40 text-center">
+          <span class="text-[10px] text-slate-400 block font-medium">Bomba</span>
+          <span id="pumpBadge" class="text-xs font-bold text-slate-400 mt-0.5 inline-block">--</span>
         </div>
-        <div class="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/40 text-center">
-          <span class="text-[11px] text-slate-400 block font-medium">Hora RTC</span>
-          <span id="rtcTime" class="text-xs font-bold text-amber-400 mt-1 inline-block">--:--:--</span>
+        <div class="bg-slate-950/60 rounded-2xl p-2.5 border border-slate-800/40 text-center">
+          <span class="text-[10px] text-slate-400 block font-medium">Hora RTC</span>
+          <span id="rtcTime" class="text-xs font-bold text-amber-400 mt-0.5 inline-block">--:--:--</span>
         </div>
-        <div class="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/40 text-center">
-          <span class="text-[11px] text-slate-400 block font-medium">Porção</span>
-          <span id="portionVal" class="text-xs font-bold text-emerald-400 mt-1 inline-block">--%</span>
+        <div class="bg-slate-950/60 rounded-2xl p-2.5 border border-slate-800/40 text-center">
+          <span class="text-[10px] text-slate-400 block font-medium">Porção</span>
+          <span id="portionVal" class="text-xs font-bold text-emerald-400 mt-0.5 inline-block">--%</span>
         </div>
       </div>
     </div>
@@ -240,11 +281,28 @@
     });
 
     function updateUI(data) {
-      // Tigela
+      // 1. Reservatório de Água (Sensor 1)
+      if (data.agua_reserva !== undefined) {
+        const val = Math.max(0, Math.min(100, Math.round(data.agua_reserva)));
+        const dStr = (data.d1 !== undefined && data.d1 > 0) ? ` (${data.d1}cm)` : '';
+        document.getElementById("resWaterPct").innerText = val + "%" + dStr;
+        document.getElementById("resWaterBar").style.width = val + "%";
+      }
+
+      // 2. Reservatório de Ração (Sensor 2)
+      if (data.racao_reserva !== undefined) {
+        const val = Math.max(0, Math.min(100, Math.round(data.racao_reserva)));
+        const dStr = (data.d2 !== undefined && data.d2 > 0) ? ` (${data.d2}cm)` : '';
+        document.getElementById("resFoodPct").innerText = val + "%" + dStr;
+        document.getElementById("resFoodBar").style.width = val + "%";
+      }
+
+      // 3. Tigela de Água (Sensor 3)
       if (data.tigela !== undefined) {
-        const bowl = Math.max(0, Math.min(100, Math.round(data.tigela)));
-        document.getElementById("bowlPercentage").innerText = bowl + "%";
-        document.getElementById("bowlProgressBar").style.width = bowl + "%";
+        const val = Math.max(0, Math.min(100, Math.round(data.tigela)));
+        const dStr = (data.d3 !== undefined && data.d3 > 0) ? ` (${data.d3}cm)` : '';
+        document.getElementById("bowlWaterPct").innerText = val + "%" + dStr;
+        document.getElementById("bowlWaterBar").style.width = val + "%";
       }
 
       // Bomba
