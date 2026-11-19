@@ -58,6 +58,16 @@
   <!-- Container principal -->
   <main class="flex-1 max-w-md w-full mx-auto px-4 pt-5 space-y-4">
 
+    <div id="alertLink" class="hidden rounded-2xl border border-rose-500/50 bg-rose-950/80 px-4 py-3 text-sm text-rose-100 shadow-lg shadow-rose-950/40">
+      <p class="font-bold text-rose-200">Alimentador sem resposta</p>
+      <p class="mt-1 leading-snug">Verifique se a rede está conectada ao alimentador ou a energia.</p>
+    </div>
+
+    <div id="alertFood" class="hidden rounded-2xl border border-amber-500/50 bg-amber-950/80 px-4 py-3 text-sm text-amber-100 shadow-lg shadow-amber-950/30">
+      <p class="font-bold text-amber-200">Ração acabou</p>
+      <p class="mt-1 leading-snug">Não há mais ração no reservatório.</p>
+    </div>
+
     <!-- Painel de Nível dos 3 Sensores Ultrassônicos -->
     <div class="bg-gradient-to-br from-slate-900 to-slate-900/90 rounded-3xl p-5 border border-slate-800 shadow-xl space-y-4">
       <div class="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
@@ -237,6 +247,18 @@
     const TOPIC_RTC      = "petfeeder/relogio";
 
     let pumpState = false;
+    let lastStatusAt = 0;
+    let brokerUpSince = 0;
+    let espOnline = false;
+    let foodEmpty = false;
+    const ESP_TIMEOUT_MS = 12000;
+    const FOOD_EMPTY_PCT = 5;
+
+    document.addEventListener("pointerdown", () => {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }, { once: true });
 
     // Conectar MQTT via WebSockets
     const client = mqtt.connect(MQTT_BROKER_WS, {
@@ -249,17 +271,21 @@
     const statusText = document.getElementById("statusText");
 
     client.on("connect", () => {
-      statusDot.className = "w-2 h-2 rounded-full bg-emerald-500 pulse-dot";
-      statusText.innerText = "Conectado ao Broker";
-      statusText.className = "text-xs text-emerald-400 font-medium";
+      brokerUpSince = Date.now();
       client.subscribe(TOPIC_STATUS);
-      showToast("Conectado ao alimentador!", "check-circle");
+      if (!espOnline) {
+        statusDot.className = "w-2 h-2 rounded-full bg-amber-500";
+        statusText.innerText = "Aguardando alimentador";
+        statusText.className = "text-xs text-amber-400 font-medium";
+      }
     });
 
-    client.on("error", (err) => {
-      statusDot.className = "w-2 h-2 rounded-full bg-rose-500";
-      statusText.innerText = "Erro na conexão";
-      statusText.className = "text-xs text-rose-400 font-medium";
+    client.on("error", () => {
+      if (!espOnline) {
+        statusDot.className = "w-2 h-2 rounded-full bg-rose-500";
+        statusText.innerText = "Erro na conexão";
+        statusText.className = "text-xs text-rose-400 font-medium";
+      }
     });
 
     client.on("offline", () => {
@@ -268,17 +294,82 @@
       statusText.className = "text-xs text-amber-400 font-medium";
     });
 
+    setInterval(checkEspLink, 2000);
+
     // Mensagens recebidas do ESP32
     client.on("message", (topic, message) => {
       if (topic === TOPIC_STATUS) {
         try {
           const data = JSON.parse(message.toString());
+          lastStatusAt = Date.now();
+          if (!espOnline) {
+            espOnline = true;
+            hideAlert("alertLink");
+            statusDot.className = "w-2 h-2 rounded-full bg-emerald-500 pulse-dot";
+            statusText.innerText = "Alimentador online";
+            statusText.className = "text-xs text-emerald-400 font-medium";
+          }
           updateUI(data);
+          checkFood(data);
         } catch (e) {
           console.error("Erro JSON:", e);
         }
       }
     });
+
+    function checkEspLink() {
+      const now = Date.now();
+      const silent = lastStatusAt > 0
+        ? now - lastStatusAt > ESP_TIMEOUT_MS
+        : brokerUpSince > 0 && now - brokerUpSince > ESP_TIMEOUT_MS;
+      if (silent) markEspOffline();
+    }
+
+    function markEspOffline() {
+      espOnline = false;
+      statusDot.className = "w-2 h-2 rounded-full bg-rose-500";
+      statusText.innerText = "Alimentador sem resposta";
+      statusText.className = "text-xs text-rose-400 font-medium";
+      const banner = document.getElementById("alertLink");
+      const firstTime = banner.classList.contains("hidden");
+      banner.classList.remove("hidden");
+      if (firstTime) {
+        if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+        notifyOnce(
+          "esp-offline",
+          "Alimentador sem resposta",
+          "Verifique se a rede está conectada ao alimentador ou a energia."
+        );
+      }
+    }
+
+    function checkFood(data) {
+      if (data.racao_reserva === undefined) return;
+      const empty = Number(data.racao_reserva) <= FOOD_EMPTY_PCT;
+      const banner = document.getElementById("alertFood");
+      if (empty && !foodEmpty) {
+        foodEmpty = true;
+        banner.classList.remove("hidden");
+        if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+        notifyOnce("food-empty", "Ração acabou", "Não há mais ração no reservatório.");
+      } else if (!empty && foodEmpty) {
+        foodEmpty = false;
+        banner.classList.add("hidden");
+      }
+    }
+
+    function hideAlert(id) {
+      document.getElementById(id).classList.add("hidden");
+    }
+
+    function notifyOnce(tag, title, body) {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      try {
+        new Notification(title, { body, tag, renotify: true });
+      } catch (e) {
+        new Notification(title, { body, tag });
+      }
+    }
 
     function updateUI(data) {
       // 1. Reservatório de Água (Sensor 1)
